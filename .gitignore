@@ -1,0 +1,6 @@
+.direnv/
+_showyourwork.sqlite
+.idea/
+out/
+*.iml
+
