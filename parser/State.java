@@ -2,7 +2,7 @@ package parser;
 
 import java.util.*;
 
-public class State implements Comparable<State> {
+public class State implements Comparable<State>, Iterable<Item> {
     private Set<Item> itemSet;
     private List<Item> items;
     private int name;
@@ -13,12 +13,46 @@ public class State implements Comparable<State> {
         this.name = name;
     }
 
+    public boolean isEmpty() {
+        return this.itemSet.isEmpty();
+    }
+
     public State() {
         this(0);
     }
 
+    public void merge(State state) {
+        this.itemSet.addAll(state.itemSet);
+        this.items = this.itemSet.stream().toList();
+    }
+
+    public Iterator<Item> iterator() {
+        return (Iterator<Item>) this.items;
+    }
+
+    public List<Item> canTransitionOnX(String X) {
+        List<Item> canTransition = new ArrayList<Item>();
+
+        for (Item item: this.itemSet) {
+            String nextSymbol = item.getNextSymbol();
+            if (nextSymbol != null && nextSymbol.equals(X)) {
+                canTransition.add(item);
+            }
+        }
+        return canTransition;
+    }
+
     public void setName(int name) {
         this.name = name;
+    }
+
+    public int size() {
+        return this.items.size();
+    }
+
+    public void addItem(Item item) {
+        this.items.add(item);
+        this.itemSet.add(item);
     }
 
     @Override
@@ -50,6 +84,10 @@ public class State implements Comparable<State> {
             }
         }
         return true;
+    }
+
+    public boolean contains(Item item) {
+        return this.itemSet.contains(item);
     }
 
     @Override

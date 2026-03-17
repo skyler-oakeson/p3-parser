@@ -12,11 +12,28 @@ public class States {
         this.states = new ArrayList<>();
     }
 
+    public void addState(State state) {
+        state.setName(this.id);
+        if (!stateSet.contains(state)) {
+            this.id++;
+            this.states.add(state);
+            this.stateSet.add(state);
+        }
+    }
+
     public State getState(int name) {
         if (name >= states.size()) {
             return null;
         }
         return states.get(name);
+    }
+
+    public int size() {
+        return this.states.size();
+    }
+
+    public boolean contains(State state) {
+        return this.stateSet.contains(state);
     }
 
     @Override

@@ -4,14 +4,19 @@
  */
 package parser;
 
+import java.awt.*;
 import java.io.IOException;
 import java.util.*;
+import java.util.List;
 
 import lexer.ExprLexer;
 import lexer.ParenLexer;
 import lexer.SimpleLexer;
 import lexer.TinyLexer;
 import org.antlr.v4.runtime.*;
+
+import static parser.Util.EOF;
+import static parser.Util.EPSILON;
 
 /**
  *
@@ -46,15 +51,76 @@ public class Parser {
     states = new States();
 
     // TODO: Call methods to compute the states and parsing tables here.
+    State start = computeClosure(new Item(grammar.startRule, 0, EOF), grammar);
+    System.out.println(start);
+    Stack<State> stack = new Stack();
+    stack.push(start);
+
+    while (!stack.isEmpty()) {
+      State state = stack.pop();
+      states.addState(state);
+      for (String sym: grammar.symbols) {
+        State transition = GOTO(state, sym, this.grammar);
+        if (!states.contains(transition) && !transition.isEmpty()) {
+          stack.push(transition);
+          states.addState(transition);
+        }
+      }
+    }
   }
 
   public States getStates() {
     return states;
   }
 
-  // TODO: Implement this method.
   static public State computeClosure(Item I, Grammar grammar) {
+    // --- initial item ---
+    // [x -> alpha ● Y Beta, a]
+
+    // --- B-productions ---
+    // [Y -> y, b] where b = First(Beta, a)
+
+    // Derive B-productions from the initial item
+    // by recursively adding rules until nothing
+    // can be added
+
     State closure = new State();
+    Stack<Item> stack = new Stack<Item>();
+    stack.push(I);
+    while (!stack.isEmpty()) {
+      Item item = stack.pop();
+      Rule r = item.getRule();
+      String a = item.getLookahead();
+      String Y = item.getNextSymbol();
+      String beta = item.getNextNextSymbol();
+      closure.addItem(item);
+
+      // if the next symbol is a non-terminal
+      // add all rules beginning with that symbol
+      // to the stack
+      if (grammar.nonterminals.contains(Y)) {
+        HashSet<String> firstSet = grammar.first.get(beta);
+
+        if (firstSet == null) {
+          firstSet = new HashSet<String>();
+          firstSet.add(a);
+        }
+
+        if (firstSet.contains(EPSILON)) {
+          firstSet.add(a);
+        }
+
+        for (Rule rule: grammar.nt2rules.get(Y)) {
+          for (String b : firstSet) {
+            Item newItem = new Item(rule, 0, b);
+            if (!closure.contains(newItem) && !stack.contains(newItem)) {
+              stack.push(newItem);
+            }
+          }
+        }
+      }
+    }
+
     return closure;
   }
 
@@ -63,6 +129,12 @@ public class Parser {
   //   the given state on the symbol X.
   static public State GOTO(State state, String X, Grammar grammar) {
     State ret = new State();
+    List<Item> items = state.canTransitionOnX(X);
+
+    for (Item item: items) {
+      ret.merge(computeClosure(new Item(item.getRule(), item.getDot()+1, item.getA()), grammar));
+    }
+
     return ret;
   }
 
