@@ -43,29 +43,66 @@ public class Parser {
   private final HashMap<Integer, HashMap<String, Integer>> gotoTable;
 
   public Parser(String grammarFilename) throws IOException {
-    actionTable = new HashMap<>();
     gotoTable = new HashMap<>();
-
-    grammar = new Grammar(grammarFilename);
-
+    actionTable = new HashMap<>();
     states = new States();
 
-    // TODO: Call methods to compute the states and parsing tables here.
-    State start = computeClosure(new Item(grammar.startRule, 0, EOF), grammar);
-    System.out.println(start);
+    grammar = new Grammar(grammarFilename);
+    Item kernal = new Item(grammar.startRule, 0, EOF);
+    Item end = new Item(grammar.startRule, 1, EOF);
+    State start = computeClosure(kernal, grammar);
     Stack<State> stack = new Stack();
     stack.push(start);
+    states.addState(start);
 
+    // calculate states and fill tables
+    // this code is really bad and I'd love to do this differently
+    // this is what I have though and this is what I will continue with
+    // one day I will rewrite this in a non-shitty language
+    // where I can control the architecture I want to get rid of the
+    // stateful programming so badly but it is way too much work
     while (!stack.isEmpty()) {
       State state = stack.pop();
-      states.addState(state);
-      for (String sym: grammar.symbols) {
-        State transition = GOTO(state, sym, this.grammar);
-        if (!states.contains(transition) && !transition.isEmpty()) {
-          stack.push(transition);
-          states.addState(transition);
+
+      HashMap<String, Action> actions = new HashMap<>();
+      HashMap<String, Integer> gotos = new HashMap<>();
+
+      for (Item item: state) {
+        if (item.getNextSymbol() == null) {
+          Rule rule = item.getRule();
+          String a = item.getA();
+          actions.put(a, Action.createReduce(rule));
         }
       }
+
+      for (String sym : grammar.symbols) {
+        State transition = GOTO(state, sym, grammar);
+        if (transition.isEmpty()) continue;
+
+        int transitionId;
+        if (!states.contains(transition)) {
+          // New state: add it and push for processing
+          transitionId = states.addState(transition);
+          stack.push(transition);
+        } else {
+          // Already exists: just look up its id
+          transitionId = states.getState(transition).getName();
+        }
+
+        // record the shift or goto
+        if (grammar.terminals.contains(sym)) {
+          actions.put(sym, Action.createShift(transitionId));
+        } else {
+          gotos.put(sym, transitionId);
+        }
+      }
+
+      if (state.contains(end)) {
+        actions.put(EOF, Action.createAccept());
+      }
+
+      this.actionTable.put(state.getName(), actions);
+      this.gotoTable.put(state.getName(), gotos);
     }
   }
 
@@ -124,7 +161,6 @@ public class Parser {
     return closure;
   }
 
-  // TODO: Implement this method.
   //   This returns a new state that represents the transition from
   //   the given state on the symbol X.
   static public State GOTO(State state, String X, Grammar grammar) {
@@ -145,8 +181,35 @@ public class Parser {
   // How much whitespace you have shouldn't matter with regard to the tests, but it will
   // help you debug if you can format it nicely.
   public String actionTableToString() {
-    StringBuilder builder = new StringBuilder();
-    return builder.toString();
+      StringBuilder builder = new StringBuilder();
+
+      // Collect all terminals across all states for consistent column headers
+      Set<String> allTerminals = new LinkedHashSet<>();
+      for (HashMap<String, Action> row : actionTable.values()) {
+        allTerminals.addAll(row.keySet());
+      }
+
+      // Header row: print each terminal as a column
+      builder.append(String.format("%8s", "state"));
+      for (String terminal : allTerminals) {
+        builder.append(String.format("%8s", terminal));
+      }
+      builder.append("\n");
+
+      // One row per state
+      for (Map.Entry<Integer, HashMap<String, Action>> entry : actionTable.entrySet()) {
+        int state = entry.getKey();
+        HashMap<String, Action> row = entry.getValue();
+
+        builder.append(String.format("%8d", state));
+        for (String terminal : allTerminals) {
+          Action action = row.get(terminal);
+          builder.append(String.format("%8s", action != null ? action.toString() : ""));
+        }
+        builder.append("\n");
+      }
+
+      return builder.toString();
   }
 
   // TODO: Implement this method
@@ -167,21 +230,72 @@ public class Parser {
     // scanned from the input file.
     // To get the token type: v.getSymbolicName(t.getType())
     // To get the token lexeme: t.getText()
+    List<Action> actions = new ArrayList<>();
     ArrayList<? extends Token> tokens = new ArrayList<>(scanner.getAllTokens());
     Vocabulary v = scanner.getVocabulary();
 
-    Stack<String> input = new Stack<>();
+    ArrayList<String> input = new ArrayList<>();
     Collections.reverse(tokens);
     input.add(Util.EOF);
     for (Token t : tokens) {
-      input.push(v.getSymbolicName(t.getType()));
+      input.add(0, v.getSymbolicName(t.getType()));
     }
     Collections.reverse(tokens);
-//    System.out.println(input);
 
-    // TODO: Parse the tokens. On an error, throw a ParseException, like so:
-    //    throw ParserException.create(tokens, i)
-    List<Action> actions = new ArrayList<>();
+    Stack<Integer> stack = new Stack<>();
+    stack.push(0);
+    int ip = 0;
+    while (true) {
+      if (input.get(ip) == null) {
+        throw ParserException.create(tokens, ip);
+      }
+
+      if (stack.peek() == null) {
+        throw ParserException.create(tokens, ip);
+      }
+
+      Integer s = stack.peek();
+      String a = input.get(ip);
+
+      if (actionTable.get(s).get(a) == null) {
+        throw ParserException.create(tokens, ip);
+      }
+
+      Action act = actionTable.get(s).get(a);
+      System.out.format("ACTION[%s, %s] = %s \n", s, a, act.toString());
+
+      if (act.isShift()) {
+        // push t onto the stack
+        stack.push(act.getState());
+
+        // advance input pointer
+        ip++;
+        actions.add(act);
+      } else if (act.isReduce()) {
+        // pop number of symbols in the rule that is matched
+        for (int i = 0; i < act.getRule().getRhs().size(); i++) {
+          stack.pop();
+        }
+
+
+        // let state t now be on top of the stack
+        int t = stack.peek();
+
+        // push GOTO[t, A] onto the stack
+        String A = act.getRule().getLhs();
+        stack.push(gotoTable.get(t).get(A));
+
+        actions.add(act);
+      } else if (act.isAccept()) {
+        break;
+      } else {
+        throw ParserException.create(tokens, ip);
+      }
+    }
+
+
+
+//    System.out.println(input);
     return actions;
   }
 

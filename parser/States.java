@@ -2,7 +2,7 @@ package parser;
 
 import java.util.*;
 
-public class States {
+public class States implements Iterable<State> {
     private Set<State> stateSet;
     private List<State> states;
     private int id = 0;
@@ -12,13 +12,24 @@ public class States {
         this.states = new ArrayList<>();
     }
 
-    public void addState(State state) {
-        state.setName(this.id);
-        if (!stateSet.contains(state)) {
-            this.id++;
-            this.states.add(state);
-            this.stateSet.add(state);
+    public int addState(State state) {
+        int name = this.id;
+        state.setName(name);
+        this.states.add(state);
+        this.stateSet.add(state);
+        this.id++;
+        return name;
+    }
+
+    public State getState(State state) {
+        for (State s : this.states) {
+            if (s.equals(state)) return s;
         }
+        return null;
+    }
+
+    public Iterator<State> iterator() {
+        return this.states.iterator();
     }
 
     public State getState(int name) {

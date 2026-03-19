@@ -21,13 +21,17 @@ public class State implements Comparable<State>, Iterable<Item> {
         this(0);
     }
 
+    public int getName() {
+        return name;
+    }
+
     public void merge(State state) {
         this.itemSet.addAll(state.itemSet);
         this.items = this.itemSet.stream().toList();
     }
 
     public Iterator<Item> iterator() {
-        return (Iterator<Item>) this.items;
+        return this.items.iterator();
     }
 
     public List<Item> canTransitionOnX(String X) {
